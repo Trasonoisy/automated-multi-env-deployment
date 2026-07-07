@@ -1,0 +1,12 @@
+services:
+  app:
+    image: automated-multi-env-deployment
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: automated-multi-env-app
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: development
+    restart: unless-stopped
