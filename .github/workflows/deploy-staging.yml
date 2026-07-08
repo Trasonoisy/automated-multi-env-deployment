@@ -1,0 +1,44 @@
+name: Deploy staging
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to staging VM
+    runs-on: [self-hosted, Windows, X64]
+    environment: staging
+
+    steps:
+      - name: Write SSH private key
+        shell: powershell
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "staging_key"
+          @"
+          ${{ secrets.STAGING_SSH_KEY }}
+          "@ | Set-Content -Path $keyPath -NoNewline
+          icacls $keyPath /inheritance:r
+          icacls $keyPath /grant:r "$($env:USERNAME):R"
+          "KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Deploy container over SSH
+        shell: powershell
+        run: |
+          $remoteScript = @'
+          set -e
+          docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:develop
+          docker stop staging-app || true
+          docker rm staging-app || true
+          docker run -d --name staging-app -p 3000:3000 --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:develop
+          curl -f http://localhost:3000/health
+          '@
+
+          $remoteScript | ssh -i "$env:KEY_PATH" -o StrictHostKeyChecking=no "${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}" "bash -s"
+
+      - name: Verify staging from runner
+        shell: powershell
+        run: |
+          curl.exe "http://${{ secrets.STAGING_HOST }}:3000/health"
