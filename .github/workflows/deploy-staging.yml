@@ -12,6 +12,9 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     environment: staging
     timeout-minutes: 3
+    env:
+      STAGING_HOST: 192.168.62.128
+      STAGING_USER: deploy
 
     steps:
       - name: Write SSH private key
@@ -46,15 +49,15 @@ jobs:
       - name: Test SSH connection
         shell: powershell
         run: |
-          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}" "whoami"
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:STAGING_USER@$env:STAGING_HOST" "whoami"
 
       - name: Deploy container over SSH
         shell: powershell
         run: |
-          scp -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:SCRIPT_PATH" "${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/deploy-staging.sh"
-          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}" "bash /tmp/deploy-staging.sh"
+          scp -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:SCRIPT_PATH" "$env:STAGING_USER@$env:STAGING_HOST`:/tmp/deploy-staging.sh"
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:STAGING_USER@$env:STAGING_HOST" "bash /tmp/deploy-staging.sh"
 
       - name: Verify staging from runner
         shell: powershell
         run: |
-          curl.exe "http://${{ secrets.STAGING_HOST }}:3000/health"
+          curl.exe "http://$env:STAGING_HOST`:3000/health"
