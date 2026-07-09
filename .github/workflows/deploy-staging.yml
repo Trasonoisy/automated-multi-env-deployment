@@ -17,11 +17,11 @@ jobs:
       - name: Write SSH private key
         shell: powershell
         env:
-          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_SSH_KEY_B64: ${{ secrets.STAGING_SSH_KEY_B64 }}
         run: |
           $keyPath = Join-Path $env:RUNNER_TEMP "staging_key"
-          $privateKey = $env:STAGING_SSH_KEY.Trim()
-          Set-Content -Path $keyPath -Value $privateKey -NoNewline -Encoding ascii
+          $keyBytes = [Convert]::FromBase64String($env:STAGING_SSH_KEY_B64)
+          [IO.File]::WriteAllBytes($keyPath, $keyBytes)
           icacls $keyPath /inheritance:r
           icacls $keyPath /grant:r "$($env:USERNAME):R"
           "KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
