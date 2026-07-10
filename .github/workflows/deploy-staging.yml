@@ -1,0 +1,67 @@
+name: Deploy staging
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to staging VM
+    runs-on: [self-hosted, Windows, X64]
+    environment: staging
+    timeout-minutes: 3
+    env:
+      STAGING_HOST: 192.168.62.128
+      STAGING_USER: deploy
+
+    steps:
+      - name: Write SSH private key
+        shell: powershell
+        env:
+          STAGING_SSH_KEY_B64: ${{ secrets.STAGING_SSH_KEY_B64 }}
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "staging_key"
+          $keyBytes = [Convert]::FromBase64String($env:STAGING_SSH_KEY_B64)
+          [IO.File]::WriteAllBytes($keyPath, $keyBytes)
+          icacls $keyPath /inheritance:r
+          icacls $keyPath /grant:r "$($env:USERNAME):R"
+          "KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create remote deploy script
+        shell: powershell
+        run: |
+          $scriptPath = Join-Path $env:RUNNER_TEMP "deploy-staging.sh"
+
+          $scriptLines = @(
+            "set -e"
+            "docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
+            "docker stop staging-app || true"
+            "docker rm staging-app || true"
+            "docker run -d --name staging-app -p 3000:3000 --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
+            "sleep 3"
+            "curl -f http://localhost:3000/health"
+          )
+
+          $scriptContent = ($scriptLines -join "`n") + "`n"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($scriptPath, $scriptContent, $utf8NoBom)
+
+          "SCRIPT_PATH=$scriptPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Test SSH connection
+        shell: powershell
+        run: |
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:STAGING_USER@$env:STAGING_HOST" "whoami"
+
+      - name: Deploy container over SSH
+        shell: powershell
+        run: |
+          scp -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:SCRIPT_PATH" "$env:STAGING_USER@$env:STAGING_HOST`:/tmp/deploy-staging.sh"
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:STAGING_USER@$env:STAGING_HOST" "bash /tmp/deploy-staging.sh"
+
+      - name: Verify staging from runner
+        shell: powershell
+        run: |
+          curl.exe "http://$env:STAGING_HOST`:3000/health"
