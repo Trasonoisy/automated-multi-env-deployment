@@ -1,0 +1,74 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to production VM
+    runs-on: [self-hosted, Windows, X64]
+    environment: production
+    timeout-minutes: 5
+
+    steps:
+      - name: Write SSH private key
+        shell: powershell
+        env:
+          PRODUCTION_SSH_KEY_B64: ${{ secrets.PRODUCTION_SSH_KEY_B64 }}
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "production_key"
+          $keyBytes = [Convert]::FromBase64String($env:PRODUCTION_SSH_KEY_B64)
+          [IO.File]::WriteAllBytes($keyPath, $keyBytes)
+          icacls $keyPath /inheritance:r
+          icacls $keyPath /grant:r "$($env:USERNAME):R"
+          "KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create remote deploy script
+        shell: powershell
+        run: |
+          $scriptPath = Join-Path $env:RUNNER_TEMP "deploy-production.sh"
+
+          $scriptLines = @(
+            "set -e"
+            "docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:main"
+            "docker stop production-app || true"
+            "docker rm production-app || true"
+            "docker run -d --name production-app -p 3000:3000 --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:main"
+            "sleep 3"
+            "curl -f http://localhost:3000/health"
+          )
+
+          $scriptContent = ($scriptLines -join "`n") + "`n"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($scriptPath, $scriptContent, $utf8NoBom)
+
+          "SCRIPT_PATH=$scriptPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Test SSH connection
+        shell: powershell
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          $target = "$env:PRODUCTION_USER@$env:PRODUCTION_HOST"
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 $target "whoami"
+
+      - name: Deploy container over SSH
+        shell: powershell
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          $target = "$env:PRODUCTION_USER@$env:PRODUCTION_HOST"
+          scp -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 "$env:SCRIPT_PATH" "$target`:/tmp/deploy-production.sh"
+          ssh -i "$env:KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ConnectTimeout=10 $target "bash /tmp/deploy-production.sh"
+
+      - name: Verify production from runner
+        shell: powershell
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          curl.exe "http://$env:PRODUCTION_HOST`:3000/health"
