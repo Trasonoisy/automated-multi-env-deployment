@@ -39,7 +39,7 @@ jobs:
             "docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
             "docker stop staging-app || true"
             "docker rm staging-app || true"
-            "docker run -d --name staging-app -p 3000:3000 --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
+            "docker run -d --name staging-app -p 3000:3000 -e NODE_ENV=staging --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
             "sleep 3"
             "curl -f http://localhost:3000/health"
           )
