@@ -32,15 +32,17 @@ jobs:
 
       - name: Create remote deploy script
         shell: powershell
+        env:
+          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
         run: |
           $scriptPath = Join-Path $env:RUNNER_TEMP "deploy-production.sh"
 
           $scriptLines = @(
             "set -e"
-            "docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:main"
+            "docker pull $env:IMAGE_NAME`:main"
             "docker stop production-app || true"
             "docker rm production-app || true"
-            "docker run -d --name production-app -p 3000:3000 -e NODE_ENV=production --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:main"
+            "docker run -d --name production-app -p 3000:3000 -e NODE_ENV=production --restart unless-stopped $env:IMAGE_NAME`:main"
             "sleep 3"
             "curl -f http://localhost:3000/health"
           )

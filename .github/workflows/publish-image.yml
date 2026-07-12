@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ghcr.io/trasonoisy/automated-multi-env-deployment
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
 
 jobs:
   build-and-push:
