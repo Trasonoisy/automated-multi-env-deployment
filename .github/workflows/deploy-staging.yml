@@ -17,8 +17,9 @@ jobs:
     environment: staging
     timeout-minutes: 3
     env:
-      STAGING_HOST: 192.168.62.128
-      STAGING_USER: deploy
+      STAGING_HOST: ${{ vars.STAGING_HOST }}
+      STAGING_USER: ${{ vars.STAGING_USER }}
+      IMAGE_NAME: ${{ vars.IMAGE_NAME }}
 
     steps:
       - name: Write SSH private key
@@ -40,10 +41,10 @@ jobs:
 
           $scriptLines = @(
             "set -e"
-            "docker pull ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
+            "docker pull $env:IMAGE_NAME`:develop"
             "docker stop staging-app || true"
             "docker rm staging-app || true"
-            "docker run -d --name staging-app -p 3000:3000 -e NODE_ENV=staging --restart unless-stopped ghcr.io/trasonoisy/automated-multi-env-deployment:develop"
+            "docker run -d --name staging-app -p 3000:3000 -e NODE_ENV=staging --restart unless-stopped $env:IMAGE_NAME`:develop"
             "sleep 3"
             "curl -f http://localhost:3000/health"
           )
